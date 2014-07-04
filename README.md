@@ -5,6 +5,8 @@ CloudFormation Training class
 
 This repo contains broken cloudformation. 
 
+Fork the project and pull your own repo. 
+
 The lab is to fill in the missing pieces. 
 
 It will boot a Java Application with a MySQL Database decoupled.
