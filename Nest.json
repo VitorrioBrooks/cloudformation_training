@@ -1,0 +1,151 @@
+{
+  "AWSTemplateFormatVersion":"2010-09-09",
+  "Description":"Nested Stack",
+  "Parameters":{
+    "Project":{
+       "Description":"Name of Project",
+       "Type":"String",
+       "Default":"CFN-Training"
+    },
+    "KeyPair" : {
+        "Description" : "KeyPair Name for Instances.",
+        "Type" : "String",
+        "Default" : "",
+        "ConstraintDescription" : "must be a existing Key Pair."
+    },
+    "BucketName":{
+       "Description":"Name of Config Bucket",
+       "Type":"String",
+       "Default":"intuit-training"
+    },
+    "SyncMaxAppCount":{
+       "Description":"Maximum Sync App Servers in Sync ASG.",
+       "Type":"Number",
+       "Default":"4"
+    },
+    "SyncMinAppCount":{
+       "Description":"Minimum Sync App Servers in Sync ASG.",
+       "Type":"Number",
+       "Default":"2",
+       "ConstraintDescription":"must be a valid number."
+    },
+    "SyncScaleUp":{
+       "Description":"Threshold for CPU Alarm High",
+       "Type":"String",
+       "Default":"100",
+       "ConstraintDescription":"must be a valid string."
+    },
+    "SyncScaleDown":{
+       "Description":"Threshold for CPU Alarm Normal",
+       "Type":"String",
+       "Default":"10",
+       "ConstraintDescription":"must be a valid string."
+    },
+    "LatencyHighScaleDown" : {
+        "Description" : "The number of seconds of latency on which to Scale Up",
+        "Type" : "Number",
+        "Default" : "5",
+        "MinValue": "3",
+        "MaxValue": "100",
+        "ConstraintDescription" : "must be a number from 3 to 100."
+    },
+    "LatencyNormalScaleDown" : {
+      "Description" : "The number of seconds of latency on which to Scale Down",
+      "Type" : "Number",
+      "Default" : "2",
+      "MinValue": "1",
+      "MaxValue": "100",
+      "ConstraintDescription" : "must be a number from 1 to 100."
+    },
+    "MaxProvisionTime":{
+         "Description":"Maximum allowable time (seconds) for the server to provision before the process is aborted and the instance destroyed.",
+         "Type":"Number",
+         "Default":"1500",
+         "MinValue":"120",
+         "MaxValue":"3600"
+    },
+    "NetworkCFNURL":{
+         "Description":"Link to Network CFNUrl",
+         "Default": ""
+    },
+    "ELBASGCFNURL":{
+         "Description":"Link to ELBASGURL",
+         "Type": "String",
+         "Default": ""
+    },
+    "DatabaseCFNURL":{
+         "Description":"Link to DatabaseURL",
+         "Type": "String",
+         "Default": ""
+    },
+    "CommonAMI" : {
+      "Description" : "The AMI most commonly used.",
+      "Type" : "String",
+      "Default" : "ami-fb8e9292",
+      "ConstraintDescription" : "must be a string."
+    }
+  },
+  "Mappings":{
+  },
+  "Resources":{
+
+    "Network":{
+      "Type":"AWS::CloudFormation::Stack",
+       "Properties":{
+         "TemplateURL": { "Ref" : "NetworkCFNURL" },
+         "Parameters":{
+           "Project": "",
+           "BastionSSHFrom" : "0.0.0.0/0",
+           "BucketName": { "Ref": "BucketName" },
+           "KeyPair": "",
+           "NATProvisionFileName": "cfn-onsite/provisioning/Nat.sh"
+         }
+       }
+    },
+    "Database":{
+      "Type":"AWS::CloudFormation::Stack",
+      "Properties":{
+        "TemplateURL": { "Ref" : "DatabaseCFNURL" },
+        "Parameters":{
+          "VPC": "vpc-2jd3ks2",
+          "VPCCIDR": { "Fn::GetAtt" : [ "Network", "Outputs.VPCCIDR" ] },
+          "KeyPair": { "Ref": "KeyPair" },
+          "AppInstanceProfile" : "",
+          "Az1Subnet" : "",
+          "ELBAz1Subnet" : "",
+          "ProvisionFileName": "cfn-onsite/provisioning/DB.sh",
+          "BucketName" : { "Ref": "BucketName" },
+          "ConfigStartCommand": "#!/bin/bash\nchef-solo -j /root/$1.json -c /root/solo.rb >/tmp/chef-client-1.log 2>&1",
+          "ELBTarget": "TCP:3306"
+        }
+      }
+    },
+    "Sync": {
+      "Type": "AWS::CloudFormation::Stack",
+      "Properties": {
+        "TemplateURL": { "Ref": "ELBASGCFNURL" },
+        "Parameters": {
+          "VPCCIDR": "",
+          "MultiAzStack": "True",
+          "KeyPair": { "Ref": "KeyPair" },
+          "AppInstanceProfile" : "",
+          "AppAz1Subnet" : "",
+          "AppAz2Subnet" : "",
+          "ELBAz2Subnet" : "",
+          "AppName" : "Sync",
+          "Environment": "Train",
+          "AMIID" : { "Ref" : "CommonAMI" },
+          "BucketName" : { "Ref": "BucketName" },
+          "ProvisionFileName": "cfn-onsite/provisioning/Sync.sh",
+          "ConfigStartCommand" : "#!/bin/bash\nchef-solo -j /root/Sync.json -c /root/solo.rb >/tmp/chef-client-1.log 2>&1",
+          "DatabaseELBURL": "",
+          "ELBTarget": "TCP:8080",
+          "ListenerELBPort": "8080",
+          "ListenerInstanceProtocol": "HTTP"
+        }
+      }
+    }
+  },
+  "Outputs":{
+  }
+}
